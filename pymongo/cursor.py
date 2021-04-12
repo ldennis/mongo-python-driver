@@ -208,6 +208,7 @@ class Cursor(object):
         self.__data = deque()
         self.__address = None
         self.__retrieved = 0
+        self.__consumed = 0
 
         self.__codec_options = collection.codec_options
         # Read preference is set when the initial find is sent.
@@ -1082,6 +1083,61 @@ class Cursor(object):
                 self.session)
         return self.__read_preference
 
+    def _retryable_getmore(self):
+        try:
+            if self.__limit:
+                limit = self.__limit - self.__retrieved
+                if self.__batch_size:
+                    limit = min(limit, self.__batch_size)
+            else:
+                limit = self.__batch_size
+
+            # Exhaust cursors don't send getMore messages.
+            g = self._getmore_class(self.__dbname,
+                                    self.__collname,
+                                    limit,
+                                    self.__id,
+                                    self.__codec_options,
+                                    self._read_preference(),
+                                    self.__session,
+                                    self.__collection.database.client,
+                                    self.__max_await_time_ms,
+                                    self.__exhaust_mgr)
+            self.__send_message(g)
+        except (NotMasterError, ConnectionFailure) as e:
+            print("--- DEBUG: Got errors from getMore", e)
+            self.__killed = True
+            self.__die()
+            self.rewind()
+            if not self.__session:
+                self.__session = self.__collection.database.client._ensure_session()
+            print("--- DEBUG: retrived", self.__retrieved)
+            print("--- DEBUG: consumed", self.__consumed)
+            skip = self.__skip + self.__consumed
+            limit = 0
+            if self.__limit > self.__consumed:
+                limit = self.__limit - self.__consumed
+            print("--- DEBUG: new skip, limit", skip, limit)
+            q = self._query_class(self.__query_flags,
+                                  self.__collection.database.name,
+                                  self.__collection.name,
+                                  skip,
+                                  self.__query_spec(),
+                                  self.__projection,
+                                  self.__codec_options,
+                                  self._read_preference(),
+                                  limit,
+                                  self.__batch_size,
+                                  self.__read_concern,
+                                  self.__collation,
+                                  self.__session,
+                                  self.__collection.database.client,
+                                  self.__allow_disk_use)
+            print("--- DEBUG: new find", q)
+            self.__send_message(q)
+        except Exception:
+            raise
+
     def _refresh(self):
         """Refreshes the cursor with more data from Mongo.
 
@@ -1119,25 +1175,7 @@ class Cursor(object):
                                   self.__allow_disk_use)
             self.__send_message(q)
         elif self.__id:  # Get More
-            if self.__limit:
-                limit = self.__limit - self.__retrieved
-                if self.__batch_size:
-                    limit = min(limit, self.__batch_size)
-            else:
-                limit = self.__batch_size
-
-            # Exhaust cursors don't send getMore messages.
-            g = self._getmore_class(self.__dbname,
-                                    self.__collname,
-                                    limit,
-                                    self.__id,
-                                    self.__codec_options,
-                                    self._read_preference(),
-                                    self.__session,
-                                    self.__collection.database.client,
-                                    self.__max_await_time_ms,
-                                    self.__exhaust_mgr)
-            self.__send_message(g)
+            self._retryable_getmore()
 
         return len(self.__data)
 
@@ -1197,6 +1235,7 @@ class Cursor(object):
         if self.__empty:
             raise StopIteration
         if len(self.__data) or self._refresh():
+            self.__consumed += 1;
             return self.__data.popleft()
         else:
             raise StopIteration

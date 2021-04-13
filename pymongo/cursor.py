@@ -35,7 +35,7 @@ from pymongo.message import (_CursorAddress,
                              _Query,
                              _RawBatchQuery)
 from pymongo.monitoring import ConnectionClosedReason
-
+from pymongo.read_concern import ReadConcern
 
 _QUERY_OPTIONS = {
     "tailable_cursor": 2,
@@ -209,6 +209,7 @@ class Cursor(object):
         self.__address = None
         self.__retrieved = 0
         self.__consumed = 0
+        self.__atClusterTime = None
 
         self.__codec_options = collection.codec_options
         # Read preference is set when the initial find is sent.
@@ -1049,6 +1050,10 @@ class Cursor(object):
                     ns = cursor.get('ns')
                     if ns:
                         self.__dbname, self.__collname = ns.split('.', 1)
+                    # Keep track of atClusterTime to use when retrying find.
+                    clusterTime = cursor.get('atClusterTime')
+                    if clusterTime:
+                        self.__atClusterTime = clusterTime
                 else:
                     documents = cursor['nextBatch']
                 self.__data = deque(documents)
@@ -1118,6 +1123,9 @@ class Cursor(object):
             if self.__limit > self.__consumed:
                 limit = self.__limit - self.__consumed
             print("--- DEBUG: new skip, limit", skip, limit)
+            print("--- DEBUG: atClusterTime", self.__atClusterTime)
+            self.__read_concern = ReadConcern("snapshot")
+            print("--- DEBUG: readConcern", self.__read_concern.level)
             q = self._query_class(self.__query_flags,
                                   self.__collection.database.name,
                                   self.__collection.name,

@@ -201,7 +201,8 @@ def _gen_find_command(coll, spec, projection, skip, limit, batch_size, options,
             cmd['singleBatch'] = True
     if batch_size:
         cmd['batchSize'] = batch_size
-    if read_concern.level and not (session and session.in_transaction):
+    #if read_concern.level and not (session and session.in_transaction):
+    if read_concern.level:
         cmd['readConcern'] = read_concern.document
     if collation:
         cmd['collation'] = collation
@@ -311,7 +312,8 @@ class _Query(object):
             # Explain does not support readConcern.
             if (not explain and session.options.causal_consistency
                     and session.operation_time is not None
-                    and not session.in_transaction):
+                    and not session.in_transaction and
+                    self.read_concern.level is not "snapshot"):
                 cmd.setdefault(
                     'readConcern', {})[
                     'afterClusterTime'] = session.operation_time

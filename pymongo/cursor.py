@@ -1116,7 +1116,7 @@ class Cursor(object):
             self.rewind()
             if not self.__session:
                 self.__session = self.__collection.database.client._ensure_session()
-            print("--- DEBUG: retrived", self.__retrieved)
+            print("--- DEBUG: retrieved", self.__retrieved)
             print("--- DEBUG: consumed", self.__consumed)
             skip = self.__skip + self.__consumed
             limit = 0
@@ -1124,8 +1124,8 @@ class Cursor(object):
                 limit = self.__limit - self.__consumed
             print("--- DEBUG: new skip, limit", skip, limit)
             print("--- DEBUG: atClusterTime", self.__atClusterTime)
-            self.__read_concern = ReadConcern("snapshot")
-            print("--- DEBUG: readConcern", self.__read_concern.level)
+            self.__read_concern = ReadConcern("snapshot", self.__atClusterTime)
+            print("--- DEBUG: readConcern", self.__read_concern.level, self.__read_concern.atClusterTime)
             q = self._query_class(self.__query_flags,
                                   self.__collection.database.name,
                                   self.__collection.name,

@@ -14,6 +14,7 @@
 
 """Tools for working with read concerns."""
 
+from bson.timestamp import Timestamp
 
 class ReadConcern(object):
     """ReadConcern
@@ -24,22 +25,35 @@ class ReadConcern(object):
           read concern level of ``majority`` will only return data that has been
           written to a majority of nodes. If the level is left unspecified, the
           server default will be used.
+        - `atClusterTime`: (timestamp) The timestamp at which a read with
+          readConcern `snapshot` reads from.
 
     .. versionadded:: 3.2
 
     """
 
-    def __init__(self, level=None):
+    def __init__(self, level=None, atClusterTime=None):
         if level is None or isinstance(level, str):
             self.__level = level
         else:
             raise TypeError(
                 'level must be a string or None.')
 
+        if atClusterTime is None or isinstance(atClusterTime, Timestamp):
+            self.__atClusterTime = atClusterTime
+        else:
+            raise TypeError(
+                'atClusterTime must be a Timestamp or None.')
+    
     @property
     def level(self):
         """The read concern level."""
         return self.__level
+
+    @property
+    def atClusterTime(self):
+        """The atClusterTime."""
+        return self.__atClusterTime
 
     @property
     def ok_for_legacy(self):
@@ -58,6 +72,8 @@ class ReadConcern(object):
         doc = {}
         if self.__level:
             doc['level'] = self.level
+        if self.__atClusterTime:
+            doc['atClusterTime'] = self.__atClusterTime
         return doc
 
     def __eq__(self, other):
